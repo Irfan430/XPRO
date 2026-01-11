@@ -7,11 +7,48 @@ Principal Security Architect Framework
 
 import os
 import sys
+import subprocess
+
+# ============================================================================
+# PERMANENT ENVIRONMENT & DEPENDENCY AUTO-FIX (Kali Linux Optimized)
+# ============================================================================
+def bootstrap_environment():
+    """Ensure the script runs in a valid environment with all dependencies."""
+    venv_path = os.path.join(os.getcwd(), "venv")
+    
+    # 1. Check if running inside a Virtual Environment
+    if not (hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)):
+        print("\n[!] XPRO: External Environment Detected. Switching to Optimized VENV...")
+        
+        # Create VENV if it doesn't exist
+        if not os.path.exists(venv_path):
+            print("[*] Creating High-Performance VENV for XPRO...")
+            subprocess.check_call([sys.executable, "-m", "venv", "venv"])
+        
+        # Path to VENV Python
+        python_bin = os.path.join(venv_path, "bin", "python3")
+        
+        # 2. Auto-install/update dependencies before launching
+        if os.path.exists("requirements.txt"):
+            print("[*] Syncing Cyber-Intelligence Libraries...")
+            subprocess.check_call([python_bin, "-m", "pip", "install", "--upgrade", "pip"], stdout=subprocess.DEVNULL)
+            subprocess.check_call([python_bin, "-m", "pip", "install", "-r", "requirements.txt"], stdout=subprocess.DEVNULL)
+        
+        # 3. Relaunch the script using VENV Python
+        print("[+] Environment Locked. Launching XPRO Engine...\n")
+        os.execv(python_bin, [python_bin] + sys.argv)
+
+# Execute Bootstrap before other imports to prevent 'ModuleNotFound' errors
+if __name__ == "__main__" and "--no-bootstrap" not in sys.argv:
+    bootstrap_environment()
+
+# ============================================================================
+# STANDARD IMPORTS
+# ============================================================================
 import json
 import time
 import signal
 import threading
-import subprocess
 import concurrent.futures
 from datetime import datetime
 from pathlib import Path
@@ -46,6 +83,7 @@ import dns.resolver
 # Initialize colorama and Rich
 init(autoreset=True)
 console = Console()
+
 
 # ============================================================================
 # CONFIGURATION & CONSTANTS
