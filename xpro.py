@@ -1,1032 +1,1347 @@
 #!/usr/bin/env python3
 """
-XPRO - APEX SENTINEL
-Autonomous Cyber-Intelligence Unit - High-Velocity Security Auditing Platform
-Principal Security Architect Framework
+XPRO - APEX SENTINEL v2.0
+Autonomous Cyber-Intelligence Unit
+GitHub: https://github.com/Irfan430/XPRO
+Ultimate Security Auditing Framework for Kali Linux
 """
 
 import os
 import sys
-import subprocess
-
-# ============================================================================
-# PERMANENT ENVIRONMENT & DEPENDENCY AUTO-FIX (Kali Linux Optimized)
-# ============================================================================
-def bootstrap_environment():
-    """Ensure the script runs in a valid environment with all dependencies."""
-    venv_path = os.path.join(os.getcwd(), "venv")
-    
-    # 1. Check if running inside a Virtual Environment
-    if not (hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)):
-        print("\n[!] XPRO: External Environment Detected. Switching to Optimized VENV...")
-        
-        # Create VENV if it doesn't exist
-        if not os.path.exists(venv_path):
-            print("[*] Creating High-Performance VENV for XPRO...")
-            subprocess.check_call([sys.executable, "-m", "venv", "venv"])
-        
-        # Path to VENV Python
-        python_bin = os.path.join(venv_path, "bin", "python3")
-        
-        # 2. Auto-install/update dependencies before launching
-        if os.path.exists("requirements.txt"):
-            print("[*] Syncing Cyber-Intelligence Libraries...")
-            subprocess.check_call([python_bin, "-m", "pip", "install", "--upgrade", "pip"], stdout=subprocess.DEVNULL)
-            subprocess.check_call([python_bin, "-m", "pip", "install", "-r", "requirements.txt"], stdout=subprocess.DEVNULL)
-        
-        # 3. Relaunch the script using VENV Python
-        print("[+] Environment Locked. Launching XPRO Engine...\n")
-        os.execv(python_bin, [python_bin] + sys.argv)
-
-# Execute Bootstrap before other imports to prevent 'ModuleNotFound' errors
-if __name__ == "__main__" and "--no-bootstrap" not in sys.argv:
-    bootstrap_environment()
-
-# ============================================================================
-# STANDARD IMPORTS
-# ============================================================================
 import json
 import time
-import signal
+import socket
+import ssl
+import asyncio
 import threading
+import subprocess
 import concurrent.futures
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, field
+from queue import Queue
+import warnings
+warnings.filterwarnings('ignore')
+
+# Core Imports
 import psutil
 import pandas as pd
+import numpy as np
 
-# Rich imports for cinematic UI
+# Rich UI for cinematic experience
 from rich.console import Console
 from rich.table import Table
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.syntax import Syntax
 from rich.columns import Columns
 from rich.text import Text
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Prompt, Confirm, IntPrompt
+from rich.markdown import Markdown
 import pyfiglet
 from colorama import init, Fore, Style
 
-# Security tool imports
+# Security Tool Integrations
 import nmap
 import scapy.all as scapy
 import requests
 from bs4 import BeautifulSoup
-import socket
-import ssl
 import dns.resolver
 
-# Initialize colorama and Rich
+# Initialize
 init(autoreset=True)
 console = Console()
 
-
 # ============================================================================
-# CONFIGURATION & CONSTANTS
+# CONFIGURATION ENGINE
 # ============================================================================
 
 @dataclass
-class Config:
-    """Global configuration for XPRO - APEX SENTINEL"""
-    THREAD_POOL_SIZE: int = None  # Auto-calculated based on RAM
+class XPROConfig:
+    """Auto-configured settings based on system resources"""
+    
+    # System Detection
+    SYSTEM_RAM: float = field(init=False)
+    CPU_CORES: int = field(init=False)
+    OS_TYPE: str = field(init=False)
+    
+    # Performance Settings
+    THREAD_POOL_SIZE: int = field(init=False)
     MAX_WORKERS: int = 50
     TIMEOUT: int = 30
-    OUTPUT_DIR: Path = Path.home() / "Downloads" / "XPRO_REPORTS"
-    NMAP_TIMING: int = 4  # Aggressive timing
-    CVSS_THRESHOLD: float = 7.0  # High risk threshold
+    NMAP_TIMING: int = 4
+    
+    # Paths
+    HOME_DIR: Path = Path.home()
+    XPRO_DIR: Path = HOME_DIR / ".xpro"
+    REPORT_DIR: Path = HOME_DIR / "XPRO_REPORTS"
+    LOG_DIR: Path = XPRO_DIR / "logs"
+    TOOL_DIR: Path = XPRO_DIR / "tools"
+    
+    # Risk Thresholds
+    CRITICAL_CVSS: float = 9.0
+    HIGH_CVSS: float = 7.0
+    MEDIUM_CVSS: float = 4.0
     
     def __post_init__(self):
-        """Auto-configure based on system resources"""
-        # Calculate optimal thread pool based on 16GB RAM
-        ram_gb = psutil.virtual_memory().total / (1024**3)
-        if ram_gb >= 16:
-            self.THREAD_POOL_SIZE = 50
-        elif ram_gb >= 8:
-            self.THREAD_POOL_SIZE = 25
-        else:
-            self.THREAD_POOL_SIZE = 15
+        """Auto-detect and configure system settings"""
+        # Detect system specs
+        self.SYSTEM_RAM = psutil.virtual_memory().total / (1024**3)  # GB
+        self.CPU_CORES = psutil.cpu_count(logical=True)
+        self.OS_TYPE = self._detect_os()
         
-        # Ensure output directory exists
-        self.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-# ============================================================================
-# CINEMATIC TERMINAL DASHBOARD
-# ============================================================================
-
-class ApexDashboard:
-    """Rich-based cinematic dashboard with real-time updates"""
+        # Auto-scale thread pool based on RAM
+        if self.SYSTEM_RAM >= 16:
+            self.THREAD_POOL_SIZE = min(self.CPU_CORES * 4, 64)
+        elif self.SYSTEM_RAM >= 8:
+            self.THREAD_POOL_SIZE = min(self.CPU_CORES * 2, 32)
+        else:
+            self.THREAD_POOL_SIZE = min(self.CPU_CORES, 16)
+        
+        # Create directories
+        for directory in [self.XPRO_DIR, self.REPORT_DIR, self.LOG_DIR, self.TOOL_DIR]:
+            directory.mkdir(parents=True, exist_ok=True)
+        
+        # Save config
+        self._save_config()
     
-    def __init__(self):
+    def _detect_os(self) -> str:
+        """Detect operating system"""
+        if os.path.exists("/etc/kali-release"):
+            return "kali"
+        elif os.path.exists("/etc/arch-release"):
+            return "arch"
+        elif sys.platform == "win32":
+            return "windows"
+        else:
+            return "linux"
+    
+    def _save_config(self):
+        """Save configuration to file"""
+        config_data = {
+            "system_ram_gb": self.SYSTEM_RAM,
+            "cpu_cores": self.CPU_CORES,
+            "os_type": self.OS_TYPE,
+            "thread_pool": self.THREAD_POOL_SIZE,
+            "config_date": datetime.now().isoformat()
+        }
+        
+        config_file = self.XPRO_DIR / "config.json"
+        with open(config_file, 'w') as f:
+            json.dump(config_data, f, indent=4)
+    
+    def check_tools(self) -> Dict[str, bool]:
+        """Check if required tools are installed"""
+        tools = {
+            "nmap": False, "sqlmap": False, "hydra": False, "john": False,
+            "nikto": False, "dirb": False, "gobuster": False, "whatweb": False,
+            "sslscan": False, "nuclei": False, "ffuf": False, "amass": False,
+            "masscan": False, "metasploit": False, "skipfish": False
+        }
+        
+        for tool in tools.keys():
+            try:
+                if tool == "metasploit":
+                    # Special check for Metasploit
+                    tools[tool] = os.path.exists("/usr/bin/msfconsole") or os.path.exists("/opt/metasploit-framework/bin/msfconsole")
+                else:
+                    result = subprocess.run(["which", tool], capture_output=True, text=True)
+                    tools[tool] = result.returncode == 0
+            except:
+                tools[tool] = False
+        
+        return tools
+
+# ============================================================================
+# CINEMATIC DASHBOARD
+# ============================================================================
+
+class XPRODashboard:
+    """Advanced Rich-based dashboard with real-time monitoring"""
+    
+    def __init__(self, config: XPROConfig):
+        self.config = config
         self.console = Console()
-        self.layout = Layout()
-        self.running = True
+        self.start_time = datetime.now()
+        
+        # Metrics
         self.scan_progress = 0
         self.active_threads = 0
-        self.vulnerabilities_found = 0
-        self.services_discovered = 0
+        self.vulnerabilities = 0
+        self.services = 0
+        self.hosts = 0
+        self.current_module = "Initializing"
+        self.current_status = "Ready"
         
-        # Setup layout
-        self.layout.split(
-            Layout(name="header", size=3),
-            Layout(name="main"),
-            Layout(name="footer", size=3)
-        )
-        self.layout["main"].split_row(
-            Layout(name="left_panel", ratio=2),
-            Layout(name="right_panel", ratio=1)
-        )
+        # Color schemes
+        self.colors = {
+            "critical": "red",
+            "high": "yellow",
+            "medium": "cyan",
+            "low": "green",
+            "info": "blue"
+        }
     
-    def clear_screen(self):
-        """Clear terminal screen"""
+    def clear(self):
+        """Clear terminal with style"""
         os.system('clear' if os.name == 'posix' else 'cls')
     
     def show_banner(self):
-        """Display cinematic banner"""
-        banner = pyfiglet.figlet_format("APEX SENTINEL", font="slant")
-        self.console.print(f"[bold cyan]{banner}[/bold cyan]")
-        self.console.print("[bold yellow]⚡ DEFENSIVE RESILIENCE THROUGH AUTOMATED INTELLIGENCE[/bold yellow]\n")
-    
-    def update_dashboard(self, module: str, status: str, details: Dict):
-        """Update dashboard with current module status"""
-        self.clear_screen()
-        self.show_banner()
+        """Display XPRO banner"""
+        self.clear()
+        banner = pyfiglet.figlet_format("XPRO SENTINEL", font="slant")
         
-        # Create main panels
-        left_panel = self._create_left_panel(module, status, details)
-        right_panel = self._create_right_panel(details)
+        grid = Table.grid(expand=True)
+        grid.add_column(justify="center")
+        
+        grid.add_row(f"[bold cyan]{banner}[/bold cyan]")
+        grid.add_row(f"[bold yellow]Version 2.0 | GitHub: https://github.com/Irfan430/XPRO[/bold yellow]")
+        grid.add_row(f"[bold green]RAM: {self.config.SYSTEM_RAM:.1f}GB | Cores: {self.config.CPU_CORES} | Threads: {self.config.THREAD_POOL_SIZE}[/bold green]")
+        grid.add_row("")
+        
+        self.console.print(grid)
+        self.console.print("[bold red]⚠️  FOR AUTHORIZED SECURITY TESTING ONLY ⚠️[/bold red]\n")
+    
+    def update_dashboard(self, module: str, status: str, findings: Dict = None):
+        """Update dashboard display"""
+        self.current_module = module
+        self.current_status = status
+        
+        # Calculate elapsed time
+        elapsed = datetime.now() - self.start_time
+        elapsed_str = str(elapsed).split('.')[0]
+        
+        # Create main display
+        main_table = Table(show_header=True, header_style="bold magenta", expand=True)
+        main_table.add_column("METRIC", width=20)
+        main_table.add_column("VALUE", width=30)
+        main_table.add_column("STATUS", width=25)
+        
+        main_table.add_row("Active Module", module, f"[green]{status}[/green]")
+        main_table.add_row("Elapsed Time", elapsed_str, "")
+        main_table.add_row("Threads Active", str(self.active_threads), 
+                          f"[{'green' if self.active_threads < self.config.THREAD_POOL_SIZE else 'yellow'}]{self.active_threads}/{self.config.THREAD_POOL_SIZE}[/]")
+        main_table.add_row("Vulnerabilities", str(self.vulnerabilities), 
+                          f"[{'red' if self.vulnerabilities > 0 else 'green'}]{self.vulnerabilities} found[/]")
+        main_table.add_row("Services Found", str(self.services), "")
+        main_table.add_row("Hosts Discovered", str(self.hosts), "")
+        
+        # Create panels
+        left_panel = Panel(
+            main_table,
+            title="[bold]XPRO CONTROL PANEL[/bold]",
+            border_style="cyan",
+            padding=(1, 2)
+        )
+        
+        # Right panel with findings
+        right_content = ""
+        if findings:
+            if "critical" in findings:
+                right_content += "[bold red]🚨 CRITICAL FINDINGS:[/bold red]\n"
+                for item in findings["critical"][:3]:
+                    right_content += f"• {item}\n"
+                right_content += "\n"
+            
+            if "recommendations" in findings:
+                right_content += "[bold green]🛡️ RECOMMENDATIONS:[/bold green]\n"
+                for item in findings["recommendations"][:3]:
+                    right_content += f"• {item}\n"
+        
+        right_panel = Panel(
+            right_content or "[yellow]No findings yet...[/yellow]",
+            title="[bold]TACTICAL ADVISOR[/bold]",
+            border_style="yellow",
+            padding=(1, 2)
+        )
         
         # Display
-        self.console.print(left_panel)
+        self.clear()
+        self.show_banner()
+        
+        columns = Columns([left_panel, right_panel])
+        self.console.print(columns)
         self.console.print("\n")
-        self.console.print(right_panel)
     
-    def _create_left_panel(self, module: str, status: str, details: Dict) -> Panel:
-        """Create main status panel"""
-        grid = Table.grid(expand=True)
-        grid.add_column(justify="left")
-        grid.add_column(justify="right")
-        
-        grid.add_row(f"[bold]Active Module:[/bold]", f"[green]{module}[/green]")
-        grid.add_row(f"[bold]Status:[/bold]", f"[yellow]{status}[/yellow]")
-        grid.add_row(f"[bold]Threads Active:[/bold]", f"[cyan]{self.active_threads}[/cyan]")
-        grid.add_row(f"[bold]Vulnerabilities:[/bold]", f"[red]{self.vulnerabilities_found}[/red]")
-        grid.add_row(f"[bold]Services Found:[/bold]", f"[blue]{self.services_discovered}[/blue]")
-        
-        # Progress bar
-        progress_bar = BarColumn(bar_width=50)
-        progress_text = Text(f"Scan Progress: {self.scan_progress}%")
-        
-        return Panel(
-            grid,
-            title="[bold]APEX SENTINEL CONTROL PANEL[/bold]",
-            border_style="cyan"
+    def show_progress(self, task: str, current: int, total: int):
+        """Show progress bar"""
+        progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn()
         )
-    
-    def _create_right_panel(self, details: Dict) -> Panel:
-        """Create tactical advisor panel"""
-        advisor_text = Text()
         
-        if "critical_issues" in details:
-            advisor_text.append("🚨 CRITICAL FINDINGS:\n", style="bold red")
-            for issue in details["critical_issues"][:3]:  # Show top 3
-                advisor_text.append(f"• {issue}\n", style="red")
-        
-        if "recommendations" in details:
-            advisor_text.append("\n🛡️ IMMEDIATE ACTIONS:\n", style="bold green")
-            for rec in details["recommendations"][:3]:
-                advisor_text.append(f"• {rec}\n", style="green")
-        
-        if "next_step" in details:
-            advisor_text.append(f"\n⚡ NEXT STEP: {details['next_step']}\n", style="bold yellow")
-        
-        return Panel(
-            advisor_text,
-            title="[bold]TACTICAL ADVISOR[/bold]",
-            border_style="yellow"
-        )
+        with progress:
+            task_id = progress.add_task(f"[cyan]{task}", total=total)
+            progress.update(task_id, completed=current)
+            self.scan_progress = int((current / total) * 100) if total > 0 else 0
 
 # ============================================================================
-# CORE ENGINE CLASSES
+# INTELLIGENT SCANNING ENGINE
 # ============================================================================
 
-class AssetDiscovery:
-    """Aggressive asset discovery and fingerprinting module"""
+class XPROScanner:
+    """High-performance scanning engine with auto-scaling"""
     
-    def __init__(self, config: Config, dashboard: ApexDashboard):
+    def __init__(self, config: XPROConfig, dashboard: XPRODashboard):
         self.config = config
         self.dashboard = dashboard
         self.nm = nmap.PortScanner()
-        self.discovered_assets = []
-        self.services = {}
+        self.results = {}
+        self.lock = threading.Lock()
         
-    def scan_network(self, target: str) -> Dict:
-        """Perform comprehensive network scan"""
+    def network_discovery(self, target: str) -> Dict:
+        """Perform comprehensive network discovery"""
         self.dashboard.update_dashboard(
-            "Asset Discovery",
-            "Initializing Aggressive Scan",
-            {"next_step": "NMAP OS Fingerprinting"}
+            "Network Discovery",
+            "Starting aggressive scan...",
+            {"recommendations": ["Initial ping sweep", "OS fingerprinting"]}
         )
         
         try:
-            # Fast ping sweep first
-            self.dashboard.active_threads = 10
-            alive_hosts = self._ping_sweep(target)
+            # Phase 1: Fast ping sweep
+            alive_hosts = self._fast_ping_sweep(target)
+            self.dashboard.hosts = len(alive_hosts)
             
-            # Intensive NMAP scan on alive hosts
+            if not alive_hosts:
+                return {"error": "No hosts alive"}
+            
+            # Phase 2: Parallel port scanning
+            self.dashboard.update_dashboard(
+                "Port Scanning",
+                f"Scanning {len(alive_hosts)} hosts...",
+                {"critical": ["Running on all threads"]}
+            )
+            
             scan_results = []
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.config.THREAD_POOL_SIZE
-            ) as executor:
-                futures = []
-                for host in alive_hosts[:20]:  # Limit for demo
-                    future = executor.submit(self._deep_host_scan, host)
-                    futures.append(future)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.config.THREAD_POOL_SIZE) as executor:
+                future_to_host = {
+                    executor.submit(self._deep_scan_host, host): host 
+                    for host in alive_hosts[:50]  # Limit for performance
+                }
                 
-                for future in concurrent.futures.as_completed(futures):
-                    result = future.result()
-                    if result:
-                        scan_results.append(result)
-                        self.services_discovered += len(result.get('services', []))
-                        self.dashboard.services_discovered = self.services_discovered
+                completed = 0
+                for future in concurrent.futures.as_completed(future_to_host):
+                    host = future_to_host[future]
+                    try:
+                        result = future.result(timeout=self.config.TIMEOUT)
+                        if result:
+                            scan_results.append(result)
+                            with self.lock:
+                                self.dashboard.services += len(result.get('services', []))
+                    except Exception as e:
+                        self.console.print(f"[yellow]Scan failed for {host}: {e}[/yellow]")
+                    
+                    completed += 1
+                    self.dashboard.show_progress("Host Scanning", completed, len(future_to_host))
+            
+            # Phase 3: Vulnerability detection
+            vuln_results = self._detect_vulnerabilities(scan_results)
             
             return {
                 "total_hosts": len(alive_hosts),
                 "scanned_hosts": len(scan_results),
-                "assets": scan_results,
-                "os_fingerprints": self._analyze_os_fingerprints(scan_results)
+                "alive_hosts": alive_hosts,
+                "scan_results": scan_results,
+                "vulnerabilities": vuln_results,
+                "timestamp": datetime.now().isoformat()
             }
             
         except Exception as e:
-            console.print(f"[red]Asset Discovery Error: {e}[/red]")
-            return {}
+            self.console.print(f"[red]Network discovery error: {e}[/red]")
+            return {"error": str(e)}
     
-    def _ping_sweep(self, target: str) -> List[str]:
-        """Fast ICMP ping sweep using Scapy"""
+    def _fast_ping_sweep(self, target: str) -> List[str]:
+        """Ultra-fast ICMP ping sweep"""
         alive_hosts = []
         
-        # Parse target range
-        if "/" in target:
-            # It's a CIDR
-            ips = list(scapy.ARP().make_table(target))
-        else:
-            ips = [target]
-        
-        # Send ICMP packets in parallel
-        ans, unans = scapy.srp(
-            scapy.Ether(dst="ff:ff:ff:ff:ff:ff")/scapy.IP(dst=target)/scapy.ICMP(),
-            timeout=2,
-            verbose=False
-        )
-        
-        for sent, received in ans:
-            alive_hosts.append(received[scapy.IP].src)
+        try:
+            # Use system ping for speed
+            if "/" in target:
+                # CIDR notation
+                cmd = ["nmap", "-sn", target, "-oG", "-"]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                for line in result.stdout.split('\n'):
+                    if "Host:" in line and "Up" in line:
+                        parts = line.split()
+                        if len(parts) > 1:
+                            alive_hosts.append(parts[1])
+            else:
+                # Single host
+                alive_hosts.append(target)
+                
+        except:
+            # Fallback to traditional method
+            try:
+                ans, unans = scapy.srp(
+                    scapy.Ether(dst="ff:ff:ff:ff:ff:ff")/scapy.IP(dst=target)/scapy.ICMP(),
+                    timeout=2,
+                    verbose=0
+                )
+                alive_hosts = [received[scapy.IP].src for sent, received in ans]
+            except:
+                alive_hosts = [target]
         
         return alive_hosts
     
-    def _deep_host_scan(self, host: str) -> Dict:
-        """Intensive single host scan"""
+    def _deep_scan_host(self, host: str) -> Dict:
+        """Deep scan single host with multiple techniques"""
+        host_result = {
+            "host": host,
+            "status": "unknown",
+            "services": [],
+            "os": "Unknown",
+            "vulnerabilities": []
+        }
+        
         try:
             # Aggressive NMAP scan
             self.nm.scan(
                 hosts=host,
-                arguments=f'-sS -sV -sC -O -A -T{self.config.NMAP_TIMING} --script vuln'
+                arguments=f'-sS -sV -sC -O -A -T{self.config.NMAP_TIMING} --script vuln,discovery,auth'
             )
             
             if host in self.nm.all_hosts():
                 host_info = self.nm[host]
+                host_result["status"] = host_info.state()
                 
-                # Extract service information
-                services = []
+                # Extract services
                 for proto in host_info.all_protocols():
                     ports = host_info[proto].keys()
                     for port in ports:
                         service = host_info[proto][port]
-                        services.append({
+                        service_info = {
                             'port': port,
                             'protocol': proto,
-                            'service': service.get('name', 'unknown'),
-                            'version': service.get('version', 'unknown'),
-                            'state': service.get('state', 'unknown')
-                        })
+                            'name': service.get('name', 'unknown'),
+                            'product': service.get('product', ''),
+                            'version': service.get('version', ''),
+                            'extra': service.get('extrainfo', ''),
+                            'cpe': service.get('cpe', '')
+                        }
+                        host_result["services"].append(service_info)
                 
                 # OS detection
-                os_info = host_info.get('osmatch', [{}])[0] if host_info.get('osmatch') else {}
+                if 'osmatch' in host_info and host_info['osmatch']:
+                    host_result["os"] = host_info['osmatch'][0].get('name', 'Unknown')
+                    host_result["os_accuracy"] = host_info['osmatch'][0].get('accuracy', 0)
                 
-                # Vulnerability scripts
-                vulns = []
+                # Extract vulnerabilities from scripts
                 if 'script' in host_info:
-                    for script_name, script_output in host_info['script'].items():
-                        if 'vuln' in script_name.lower():
-                            vulns.append({
-                                'script': script_name,
-                                'output': script_output
+                    for script, output in host_info['script'].items():
+                        if any(vuln in script.lower() for vuln in ['vuln', 'exploit', 'cve']):
+                            host_result["vulnerabilities"].append({
+                                'type': 'nmap_script',
+                                'script': script,
+                                'output': str(output)[:500],
+                                'cvss': self._estimate_cvss_from_nmap(script)
                             })
-                            self.dashboard.vulnerabilities_found += 1
                 
-                return {
-                    'host': host,
-                    'status': host_info.state(),
-                    'services': services,
-                    'os': os_info.get('name', 'Unknown'),
-                    'os_accuracy': os_info.get('accuracy', 0),
-                    'vulnerabilities': vulns,
-                    'tcp_ports': [s for s in services if s['protocol'] == 'tcp'],
-                    'udp_ports': [s for s in services if s['protocol'] == 'udp']
-                }
+                # Update dashboard
+                with self.lock:
+                    self.dashboard.vulnerabilities += len(host_result["vulnerabilities"])
         
         except Exception as e:
-            console.print(f"[yellow]Scan error for {host}: {e}[/yellow]")
+            host_result["error"] = str(e)
         
-        return {}
-
-class WebHardeningAudit:
-    """Comprehensive web application security audit"""
+        return host_result
     
-    def __init__(self, config: Config, dashboard: ApexDashboard):
+    def _detect_vulnerabilities(self, scan_results: List[Dict]) -> List[Dict]:
+        """Detect vulnerabilities from scan results"""
+        vulnerabilities = []
+        
+        for host in scan_results:
+            for service in host.get('services', []):
+                # Check for common vulnerable services
+                vuln_check = self._check_service_vulnerability(service)
+                if vuln_check:
+                    vuln_check.update({
+                        'host': host['host'],
+                        'port': service['port']
+                    })
+                    vulnerabilities.append(vuln_check)
+        
+        return vulnerabilities
+    
+    def _check_service_vulnerability(self, service: Dict) -> Optional[Dict]:
+        """Check if service has known vulnerabilities"""
+        service_name = service.get('name', '').lower()
+        product = service.get('product', '').lower()
+        version = service.get('version', '')
+        
+        # Common vulnerability checks
+        vuln_patterns = {
+            'ftp': {'check': lambda: 'anonymous' in service.get('extra', '').lower(),
+                   'type': 'FTP Anonymous Access',
+                   'cvss': 5.3,
+                   'remediation': 'Disable anonymous FTP access'},
+            
+            'ssh': {'check': lambda: any(x in service.get('extra', '').lower() 
+                                        for x in ['weak', 'old', 'vulnerable']),
+                   'type': 'SSH Weak Configuration',
+                   'cvss': 7.5,
+                   'remediation': 'Update SSH configuration'},
+            
+            'http': {'check': lambda: any(x in service.get('product', '').lower() 
+                                         for x in ['apache', 'nginx', 'iis']) and
+                                     any(x in version for x in ['1.', '2.0', '2.2']),
+                   'type': 'Web Server Version Vulnerability',
+                   'cvss': 8.0,
+                   'remediation': 'Update web server to latest version'},
+            
+            'microsoft-ds': {'check': lambda: 'SMB' in service.get('product', ''),
+                           'type': 'SMB Protocol Vulnerability',
+                           'cvss': 8.8,
+                           'remediation': 'Apply SMB security patches'},
+            
+            'mysql': {'check': lambda: version and version.startswith('5.'),
+                     'type': 'MySQL Old Version',
+                     'cvss': 7.2,
+                     'remediation': 'Upgrade MySQL database'}
+        }
+        
+        for pattern, vuln_info in vuln_patterns.items():
+            if pattern in service_name or pattern in product:
+                try:
+                    if vuln_info['check']():
+                        return {
+                            'type': vuln_info['type'],
+                            'cvss': vuln_info['cvss'],
+                            'severity': 'Critical' if vuln_info['cvss'] >= 9.0 else 
+                                       'High' if vuln_info['cvss'] >= 7.0 else 
+                                       'Medium',
+                            'remediation': vuln_info['remediation'],
+                            'evidence': f"Service: {service_name} {product} {version}"
+                        }
+                except:
+                    continue
+        
+        return None
+    
+    def _estimate_cvss_from_nmap(self, script: str) -> float:
+        """Estimate CVSS score from NMAP script name"""
+        script_lower = script.lower()
+        
+        if any(word in script_lower for word in ['critical', 'exploit', 'rce', 'remote']):
+            return 9.0
+        elif any(word in script_lower for word in ['vuln', 'vulnerability', 'cve']):
+            return 7.5
+        elif any(word in script_lower for word in ['weak', 'misconfig', 'info']):
+            return 5.0
+        else:
+            return 3.0
+
+# ============================================================================
+# WEB APPLICATION AUDITOR
+# ============================================================================
+
+class WebAuditor:
+    """Comprehensive web application security testing"""
+    
+    def __init__(self, config: XPROConfig, dashboard: XPRODashboard):
         self.config = config
         self.dashboard = dashboard
-        self.vulnerabilities = []
-        
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
+    
     def audit_website(self, url: str) -> Dict:
-        """Perform deep web application audit"""
+        """Perform complete web application audit"""
         self.dashboard.update_dashboard(
-            "Web Hardening Audit",
-            "Initializing SQLMap & WP-Scan Logic",
-            {"next_step": "Configuration Analysis"}
+            "Web Application Audit",
+            f"Auditing {url}",
+            {"recommendations": ["Checking headers", "Testing for injections"]}
         )
         
         results = {
             'url': url,
-            'sql_injection': [],
-            'xss_vulnerabilities': [],
-            'config_issues': [],
-            'wordpress_issues': [],
-            'headers_analysis': {},
-            'ssl_analysis': {}
+            'security_headers': {},
+            'vulnerabilities': [],
+            'technologies': [],
+            'directories': [],
+            'ssl_info': {}
         }
         
         try:
-            # Parallel audit execution
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=self.config.THREAD_POOL_SIZE
-            ) as executor:
-                futures = {
-                    executor.submit(self._check_sql_injection, url): 'sql',
-                    executor.submit(self._analyze_headers, url): 'headers',
-                    executor.submit(self._test_ssl, url): 'ssl',
-                    executor.submit(self._scan_wordpress, url): 'wordpress',
-                    executor.submit(self._check_xss, url): 'xss',
-                    executor.submit(self._directory_bruteforce, url): 'dirs'
-                }
+            # Check if URL is accessible
+            response = self.session.get(url, timeout=10, verify=False)
+            results['status_code'] = response.status_code
+            
+            # 1. Security headers check
+            results['security_headers'] = self._check_security_headers(response.headers)
+            
+            # 2. Technology detection
+            results['technologies'] = self._detect_technologies(response)
+            
+            # 3. Run parallel tests
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.config.THREAD_POOL_SIZE) as executor:
+                futures = []
+                
+                futures.append(executor.submit(self._test_sql_injection, url))
+                futures.append(executor.submit(self._test_xss, url))
+                futures.append(executor.submit(self._test_directory_traversal, url))
+                futures.append(executor.submit(self._check_ssl, url))
+                futures.append(executor.submit(self._find_directories, url))
                 
                 for future in concurrent.futures.as_completed(futures):
-                    audit_type = futures[future]
                     try:
-                        result = future.result(timeout=self.config.TIMEOUT)
-                        
-                        if audit_type == 'sql' and result:
-                            results['sql_injection'] = result
-                            self.dashboard.vulnerabilities_found += len(result)
-                        elif audit_type == 'headers':
-                            results['headers_analysis'] = result
-                        elif audit_type == 'ssl':
-                            results['ssl_analysis'] = result
-                        elif audit_type == 'wordpress' and result:
-                            results['wordpress_issues'] = result
-                            self.dashboard.vulnerabilities_found += len(result)
-                        elif audit_type == 'xss' and result:
-                            results['xss_vulnerabilities'] = result
-                            self.dashboard.vulnerabilities_found += len(result)
-                        
-                    except concurrent.futures.TimeoutError:
-                        console.print(f"[yellow]Timeout in {audit_type} audit[/yellow]")
+                        result = future.result(timeout=15)
+                        if result:
+                            if 'sql' in str(future):
+                                results['vulnerabilities'].extend(result)
+                            elif 'xss' in str(future):
+                                results['vulnerabilities'].extend(result)
+                            elif 'directory' in str(future):
+                                results['directories'] = result
+                            elif 'ssl' in str(future):
+                                results['ssl_info'] = result
+                    except Exception as e:
+                        continue
             
-            # Generate CVSS scores
-            results['cvss_scores'] = self._calculate_cvss_scores(results)
+            # Calculate risk score
+            results['risk_score'] = self._calculate_web_risk(results)
+            
+            # Update dashboard
+            self.dashboard.vulnerabilities += len(results['vulnerabilities'])
             
             return results
             
         except Exception as e:
-            console.print(f"[red]Web audit error: {e}[/red]")
+            results['error'] = str(e)
             return results
     
-    def _check_sql_injection(self, url: str) -> List[Dict]:
-        """SQL injection testing with SQLMap-like logic"""
+    def _check_security_headers(self, headers: Dict) -> Dict:
+        """Check security headers"""
+        analysis = {
+            'missing': [],
+            'weak': [],
+            'good': []
+        }
+        
+        security_headers = {
+            'X-Frame-Options': ['DENY', 'SAMEORIGIN'],
+            'X-Content-Type-Options': ['nosniff'],
+            'X-XSS-Protection': ['1; mode=block'],
+            'Strict-Transport-Security': ['max-age='],
+            'Content-Security-Policy': ['default-src', 'script-src'],
+            'Referrer-Policy': ['no-referrer', 'strict-origin']
+        }
+        
+        for header, expected_values in security_headers.items():
+            if header in headers:
+                header_value = headers[header]
+                if any(expected in header_value for expected in expected_values):
+                    analysis['good'].append(f"{header}: {header_value}")
+                else:
+                    analysis['weak'].append(f"{header}: {header_value}")
+            else:
+                analysis['missing'].append(header)
+        
+        return analysis
+    
+    def _detect_technologies(self, response) -> List[str]:
+        """Detect web technologies"""
+        tech = []
+        
+        # Check headers
+        server = response.headers.get('Server', '')
+        if server:
+            tech.append(f"Server: {server}")
+        
+        # Check cookies
+        cookies = response.headers.get('Set-Cookie', '')
+        if 'PHPSESSID' in cookies:
+            tech.append("PHP")
+        if 'JSESSIONID' in cookies:
+            tech.append("Java")
+        if 'ASP.NET_SessionId' in cookies:
+            tech.append("ASP.NET")
+        
+        # Check HTML for frameworks
+        html = response.text[:5000]
+        if 'wp-content' in html:
+            tech.append("WordPress")
+        if 'drupal' in html.lower():
+            tech.append("Drupal")
+        if 'jquery' in html.lower():
+            tech.append("jQuery")
+        if 'react' in html.lower():
+            tech.append("React")
+        if 'vue' in html.lower():
+            tech.append("Vue.js")
+        
+        return tech
+    
+    def _test_sql_injection(self, url: str) -> List[Dict]:
+        """Test for SQL injection vulnerabilities"""
         test_payloads = [
             "'",
             "' OR '1'='1",
+            "'; DROP TABLE users--",
             "' UNION SELECT NULL--",
-            "' AND 1=CAST((SELECT version()) AS INTEGER)--"
+            "1' AND SLEEP(5)--"
         ]
         
         vulnerabilities = []
         
-        for payload in test_payloads:
-            test_url = f"{url}?id={payload}" if "?" not in url else f"{url}{payload}"
+        for payload in test_payloads[:3]:  # Limit for demo
+            test_url = f"{url}?id={payload}" if "?" not in url else f"{url}&test={payload}"
             
             try:
-                response = requests.get(test_url, timeout=10)
+                start = time.time()
+                response = self.session.get(test_url, timeout=10, verify=False)
+                elapsed = time.time() - start
                 
-                # Simple error-based detection (production would use more sophisticated methods)
-                error_indicators = [
-                    "SQL syntax",
-                    "mysql_fetch",
-                    "ORA-",
-                    "PostgreSQL",
-                    "SQLite",
-                    "Unclosed quotation mark"
+                # Time-based detection
+                if elapsed > 4:
+                    vulnerabilities.append({
+                        'type': 'SQL Injection (Time-based)',
+                        'payload': payload,
+                        'cvss': 8.6,
+                        'severity': 'High',
+                        'remediation': 'Use parameterized queries with input validation'
+                    })
+                    continue
+                
+                # Error-based detection
+                error_patterns = [
+                    'sql syntax', 'mysql_fetch', 'ORA-', 'PostgreSQL',
+                    'SQLite', 'unclosed quotation', 'syntax error'
                 ]
                 
-                if any(indicator in response.text for indicator in error_indicators):
+                if any(pattern in response.text.lower() for pattern in error_patterns):
                     vulnerabilities.append({
-                        'type': 'SQL Injection',
+                        'type': 'SQL Injection (Error-based)',
                         'payload': payload,
-                        'confidence': 'High',
-                        'cvss_score': 8.6,
-                        'remediation': 'Use parameterized queries or ORM with input validation'
+                        'cvss': 8.6,
+                        'severity': 'High',
+                        'remediation': 'Implement prepared statements and proper error handling'
                     })
-                    
-            except requests.RequestException:
+                
+            except:
                 continue
         
         return vulnerabilities
     
-    def _analyze_headers(self, url: str) -> Dict:
-        """Analyze HTTP security headers"""
-        try:
-            response = requests.get(url, timeout=10)
-            headers = response.headers
-            
-            analysis = {
-                'missing_headers': [],
-                'weak_headers': [],
-                'recommendations': []
-            }
-            
-            # Check critical security headers
-            security_headers = {
-                'X-Frame-Options': 'DENY or SAMEORIGIN',
-                'X-Content-Type-Options': 'nosniff',
-                'X-XSS-Protection': '1; mode=block',
-                'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-                'Content-Security-Policy': 'default-src \'self\'',
-                'Referrer-Policy': 'strict-origin-when-cross-origin'
-            }
-            
-            for header, expected in security_headers.items():
-                if header not in headers:
-                    analysis['missing_headers'].append(header)
-                    analysis['recommendations'].append(f"Add {header}: {expected}")
-                elif expected not in str(headers.get(header, '')):
-                    analysis['weak_headers'].append(f"{header}: {headers[header]}")
-            
-            return analysis
-            
-        except requests.RequestException as e:
-            return {'error': str(e)}
-    
-    def _test_ssl(self, url: str) -> Dict:
-        """SSL/TLS configuration audit"""
-        import ssl
-        import OpenSSL
+    def _test_xss(self, url: str) -> List[Dict]:
+        """Test for XSS vulnerabilities"""
+        payloads = [
+            '<script>alert("XSS")</script>',
+            '<img src=x onerror=alert(1)>',
+            '" onmouseover="alert(1)"',
+            'javascript:alert(1)'
+        ]
         
+        vulnerabilities = []
+        
+        for payload in payloads[:2]:  # Limit for demo
+            test_url = f"{url}?q={payload}" if "?" not in url else f"{url}&xss={payload}"
+            
+            try:
+                response = self.session.get(test_url, timeout=10, verify=False)
+                
+                if payload in response.text:
+                    vulnerabilities.append({
+                        'type': 'Cross-Site Scripting (XSS)',
+                        'payload': payload[:50],
+                        'cvss': 6.1,
+                        'severity': 'Medium',
+                        'remediation': 'Implement output encoding and Content Security Policy'
+                    })
+                
+            except:
+                continue
+        
+        return vulnerabilities
+    
+    def _find_directories(self, url: str) -> List[str]:
+        """Find common directories"""
+        common_dirs = [
+            'admin', 'login', 'wp-admin', 'administrator',
+            'backup', 'config', 'db', 'sql',
+            'test', 'debug', 'api', 'doc'
+        ]
+        
+        found = []
+        
+        for directory in common_dirs[:10]:  # Limit for demo
+            test_url = f"{url.rstrip('/')}/{directory}/"
+            
+            try:
+                response = self.session.get(test_url, timeout=5, verify=False)
+                if response.status_code < 400:
+                    found.append(f"{directory} ({response.status_code})")
+            except:
+                continue
+        
+        return found
+    
+    def _check_ssl(self, url: str) -> Dict:
+        """Check SSL/TLS configuration"""
         domain = url.replace('https://', '').replace('http://', '').split('/')[0]
         
         try:
-            cert = ssl.get_server_certificate((domain, 443))
-            x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
-            
-            analysis = {
-                'issuer': x509.get_issuer().CN,
-                'subject': x509.get_subject().CN,
-                'expiry': x509.get_notAfter().decode('utf-8'),
-                'signature_algorithm': x509.get_signature_algorithm().decode('utf-8'),
-                'issues': []
-            }
-            
-            # Check expiry
-            expiry_date = datetime.strptime(analysis['expiry'], '%Y%m%d%H%M%SZ')
-            days_remaining = (expiry_date - datetime.now()).days
-            
-            if days_remaining < 30:
-                analysis['issues'].append(f"Certificate expires in {days_remaining} days")
-            
-            # Check weak algorithms
-            weak_algorithms = ['sha1', 'md5']
-            if any(algo in analysis['signature_algorithm'].lower() for algo in weak_algorithms):
-                analysis['issues'].append(f"Weak signature algorithm: {analysis['signature_algorithm']}")
-            
-            return analysis
-            
+            context = ssl.create_default_context()
+            with socket.create_connection((domain, 443), timeout=5) as sock:
+                with context.wrap_socket(sock, server_hostname=domain) as ssock:
+                    cert = ssock.getpeercert()
+                    
+                    # Check expiry
+                    not_after = cert['notAfter']
+                    expiry_date = datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z')
+                    days_left = (expiry_date - datetime.now()).days
+                    
+                    return {
+                        'issuer': dict(x[0] for x in cert['issuer']).get('organizationName', 'Unknown'),
+                        'valid_until': not_after,
+                        'days_left': days_left,
+                        'protocol': ssock.version(),
+                        'issues': [] if days_left > 30 else ['Certificate expiring soon']
+                    }
+        
         except Exception as e:
             return {'error': str(e)}
-
-class AuthenticationResilienceTester:
-    """High-speed credential strength and authentication testing"""
     
-    def __init__(self, config: Config, dashboard: ApexDashboard):
+    def _calculate_web_risk(self, results: Dict) -> float:
+        """Calculate overall web risk score"""
+        score = 0
+        factors = 0
+        
+        # Vulnerabilities
+        for vuln in results.get('vulnerabilities', []):
+            score += vuln.get('cvss', 0)
+            factors += 1
+        
+        # Missing headers
+        missing = len(results.get('security_headers', {}).get('missing', []))
+        score += missing * 2
+        factors += missing
+        
+        # SSL issues
+        if results.get('ssl_info', {}).get('issues'):
+            score += 5
+            factors += 1
+        
+        return round(score / max(factors, 1), 1)
+
+# ============================================================================
+# REPORTING ENGINE
+# ============================================================================
+
+class XPROReporter:
+    """Professional reporting system with multiple formats"""
+    
+    def __init__(self, config: XPROConfig):
         self.config = config
-        self.dashboard = dashboard
-        self.common_passwords = self._load_password_list()
+        self.template_dir = self.config.XPRO_DIR / "templates"
+        self.template_dir.mkdir(exist_ok=True)
         
-    def test_credentials(self, target: str, service: str, username: str = None) -> Dict:
-        """Test credential strength and authentication resilience"""
-        self.dashboard.update_dashboard(
-            "Authentication Audit",
-            "Running Credential Strength Testing",
-            {"next_step": "Password Policy Analysis"}
-        )
+        # Create default template
+        self._create_default_template()
+    
+    def generate_report(self, scan_data: Dict, format: str = "html") -> str:
+        """Generate comprehensive report"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        results = {
-            'service': service,
-            'weak_credentials': [],
-            'brute_force_resistance': {},
-            'password_policy': {},
-            'recommendations': []
+        if format.lower() == "html":
+            return self._generate_html_report(scan_data, timestamp)
+        elif format.lower() == "json":
+            return self._generate_json_report(scan_data, timestamp)
+        else:
+            return self._generate_text_report(scan_data, timestamp)
+    
+    def _generate_html_report(self, data: Dict, timestamp: str) -> str:
+        """Generate HTML report"""
+        filename = f"xpro_report_{timestamp}.html"
+        report_path = self.config.REPORT_DIR / filename
+        
+        # Prepare data
+        vulnerabilities = data.get('vulnerabilities', [])
+        services = data.get('services', [])
+        hosts = data.get('hosts', [])
+        
+        # Calculate statistics
+        stats = {
+            'total_vulns': len(vulnerabilities),
+            'critical_vulns': len([v for v in vulnerabilities if v.get('cvss', 0) >= 9.0]),
+            'high_vulns': len([v for v in vulnerabilities if 7.0 <= v.get('cvss', 0) < 9.0]),
+            'services_found': len(services),
+            'hosts_scanned': len(hosts),
+            'scan_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        try:
-            # Test common passwords
-            if username:
-                weak_passwords = self._test_password_strength(username)
-                results['weak_credentials'] = weak_passwords
-            
-            # Analyze service-specific vulnerabilities
-            if service.lower() == 'ssh':
-                results.update(self._audit_ssh(target))
-            elif service.lower() == 'smb':
-                results.update(self._audit_smb(target))
-            elif service.lower() == 'ftp':
-                results.update(self._audit_ftp(target))
-            
-            # Generate CVSS score
-            results['cvss_score'] = self._calculate_auth_cvss(results)
-            
-            return results
-            
-        except Exception as e:
-            console.print(f"[red]Auth testing error: {e}[/red]")
-            return results
-    
-    def _test_password_strength(self, username: str) -> List[Dict]:
-        """Test against common and weak passwords"""
-        weak_passwords = []
-        
-        for password in self.common_passwords[:100]:  # Limit for demo
-            # Simulate password check (in real use, would actually test against service)
-            if len(password) < 8:
-                weak_passwords.append({
-                    'username': username,
-                    'password': password,
-                    'issue': 'Too short (< 8 chars)',
-                    'severity': 'High'
-                })
-            elif password.isalpha() or password.isnumeric():
-                weak_passwords.append({
-                    'username': username,
-                    'password': password,
-                    'issue': 'No complexity',
-                    'severity': 'Medium'
-                })
-            elif password.lower() == 'password' or password.lower() == 'admin':
-                weak_passwords.append({
-                    'username': username,
-                    'password': password,
-                    'issue': 'Extremely common',
-                    'severity': 'Critical'
-                })
-        
-        return weak_passwords[:10]  # Return top 10
-    
-    def _audit_ssh(self, target: str) -> Dict:
-        """SSH-specific security audit"""
-        audit = {
-            'ssh_issues': [],
-            'recommendations': []
-        }
-        
-        # Simulate SSH checks
-        common_ssh_issues = [
-            'Protocol 1 enabled',
-            'Root login permitted',
-            'Empty passwords allowed',
-            'Weak key exchange algorithms'
-        ]
-        
-        for issue in common_ssh_issues[:2]:  # Simulate finding some issues
-            audit['ssh_issues'].append(issue)
-            audit['recommendations'].append(f"Disable {issue}")
-        
-        return audit
-    
-    def _load_password_list(self) -> List[str]:
-        """Load common passwords list"""
-        # In production, load from file
-        return [
-            'password', '123456', 'admin', 'welcome', '12345678',
-            'qwerty', 'password123', 'admin123', 'letmein', 'monkey'
-        ]
-
-class InfrastructureAuditor:
-    """Metasploit-RPC integration and vulnerability verification"""
-    
-    def __init__(self, config: Config, dashboard: ApexDashboard):
-        self.config = config
-        self.dashboard = dashboard
-        
-    def audit_infrastructure(self, target: str, services: List[Dict]) -> Dict:
-        """Comprehensive infrastructure vulnerability assessment"""
-        self.dashboard.update_dashboard(
-            "Infrastructure Audit",
-            "Running Metasploit RPC Verification",
-            {"next_step": "Vulnerability Correlation"}
-        )
-        
-        results = {
-            'target': target,
-            'verified_vulnerabilities': [],
-            'exploit_attempts': [],
-            'risk_assessment': {},
-            'mitigations': []
-        }
-        
-        try:
-            # Analyze each service for known vulnerabilities
-            for service in services:
-                service_audit = self._analyze_service_vulnerabilities(service)
-                if service_audit['vulnerabilities']:
-                    results['verified_vulnerabilities'].extend(service_audit['vulnerabilities'])
-                    results['mitigations'].extend(service_audit['mitigations'])
-            
-            # Generate risk assessment
-            results['risk_assessment'] = self._assess_risk(results['verified_vulnerabilities'])
-            
-            # Update dashboard
-            self.dashboard.vulnerabilities_found += len(results['verified_vulnerabilities'])
-            
-            return results
-            
-        except Exception as e:
-            console.print(f"[red]Infrastructure audit error: {e}[/red]")
-            return results
-    
-    def _analyze_service_vulnerabilities(self, service: Dict) -> Dict:
-        """Check service against known vulnerability database"""
-        vulnerabilities = []
-        mitigations = []
-        
-        # Service-specific checks
-        service_name = service.get('service', '').lower()
-        version = service.get('version', '')
-        
-        # Simulated vulnerability database check
-        vuln_db = {
-            'apache': [
-                {'cve': 'CVE-2021-41773', 'description': 'Path traversal', 'cvss': 7.5},
-                {'cve': 'CVE-2021-42013', 'description': 'RCE vulnerability', 'cvss': 9.8}
-            ],
-            'openssh': [
-                {'cve': 'CVE-2021-41617', 'description': 'Privilege escalation', 'cvss': 7.8}
-            ],
-            'mysql': [
-                {'cve': 'CVE-2021-21771', 'description': 'Memory corruption', 'cvss': 8.8}
-            ]
-        }
-        
-        for service_key, vulns in vuln_db.items():
-            if service_key in service_name:
-                vulnerabilities.extend(vulns)
-                
-                # Generate mitigations
-                for vuln in vulns:
-                    mitigations.append({
-                        'cve': vuln['cve'],
-                        'action': f'Update {service_name} to latest version',
-                        'priority': 'Critical' if vuln['cvss'] >= 7.0 else 'High'
-                    })
-        
-        return {
-            'service': service_name,
-            'vulnerabilities': vulnerabilities,
-            'mitigations': mitigations
-        }
-
-class TacticalAdvisor:
-    """AI-Logic for CVSS scoring and next-step recommendations"""
-    
-    def __init__(self):
-        self.cvss_base_scores = {}
-        
-    def analyze_findings(self, findings: Dict) -> Dict:
-        """Analyze findings and provide tactical recommendations"""
-        recommendations = {
-            'critical_issues': [],
-            'immediate_actions': [],
-            'next_module': None,
-            'risk_score': 0
-        }
-        
-        # Calculate overall risk score
-        risk_score = self._calculate_overall_risk(findings)
-        recommendations['risk_score'] = risk_score
-        
-        # Identify critical issues
-        if 'vulnerabilities' in findings:
-            for vuln in findings.get('vulnerabilities', []):
-                if vuln.get('cvss', 0) >= 8.0:
-                    recommendations['critical_issues'].append(
-                        f"Critical: {vuln.get('type', 'Unknown')} - CVSS: {vuln.get('cvss')}"
-                    )
-        
-        # Suggest next module based on findings
-        if findings.get('services'):
-            for service in findings['services']:
-                service_name = service.get('service', '').lower()
-                
-                if 'http' in service_name or 'https' in service_name:
-                    recommendations['next_module'] = 'WebHardeningAudit'
-                    recommendations['immediate_actions'].append(
-                        "Run web application security scan"
-                    )
-                elif 'ssh' in service_name or 'telnet' in service_name:
-                    recommendations['next_module'] = 'AuthenticationResilienceTester'
-                    recommendations['immediate_actions'].append(
-                        "Test SSH authentication resilience"
-                    )
-                elif 'smb' in service_name or 'netbios' in service_name:
-                    recommendations['next_module'] = 'InfrastructureAuditor'
-                    recommendations['immediate_actions'].append(
-                        "Audit SMB for EternalBlue vulnerabilities"
-                    )
-        
-        return recommendations
-    
-    def _calculate_overall_risk(self, findings: Dict) -> float:
-        """Calculate comprehensive risk score"""
-        total_score = 0
-        count = 0
-        
-        # Check vulnerabilities
-        for vuln in findings.get('vulnerabilities', []):
-            total_score += vuln.get('cvss', 0)
-            count += 1
-        
-        # Check misconfigurations
-        for issue in findings.get('misconfigurations', []):
-            if issue.get('severity') == 'Critical':
-                total_score += 9.0
-            elif issue.get('severity') == 'High':
-                total_score += 7.0
-            count += 1
-        
-        return total_score / count if count > 0 else 0
-
-class ShieldReporter:
-    """Generate comprehensive HTML reports with remediation guidance"""
-    
-    def __init__(self, config: Config):
-        self.config = config
-        
-    def generate_report(self, scan_data: Dict, filename: str = None) -> str:
-        """Generate professional HTML report"""
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"xpro_audit_{timestamp}.html"
-        
-        report_path = self.config.OUTPUT_DIR / filename
-        
-        # Create HTML report
-        html_content = self._create_html_template(scan_data)
-        
-        with open(report_path, 'w') as f:
-            f.write(html_content)
-        
-        console.print(f"[green]Report generated: {report_path}[/green]")
-        return str(report_path)
-    
-    def _create_html_template(self, data: Dict) -> str:
-        """Create HTML report template"""
-        return f"""
+        # Create HTML
+        html = f"""
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>XPRO - APEX SENTINEL Audit Report</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XPRO Security Audit Report</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 40px; }}
-        .header {{ background: #1a1a2e; color: white; padding: 20px; }}
-        .vulnerability {{ border: 1px solid #ccc; margin: 10px 0; padding: 15px; }}
-        .critical {{ background: #ffcccc; border-left: 5px solid #ff0000; }}
-        .high {{ background: #ffe6cc; border-left: 5px solid #ff9900; }}
-        .medium {{ background: #ffffcc; border-left: 5px solid #ffff00; }}
-        .remediation {{ background: #ccffcc; padding: 10px; margin: 10px 0; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }}
+        
+        .container {{ max-width: 1200px; margin: 0 auto; padding: 20px; }}
+        
+        .header {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 40px 0; text-align: center; border-radius: 10px; margin-bottom: 30px; }}
+        .header h1 {{ font-size: 2.5em; margin-bottom: 10px; }}
+        .header .subtitle {{ font-size: 1.2em; opacity: 0.9; }}
+        
+        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }}
+        .stat-card {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }}
+        .stat-card.critical {{ border-top: 4px solid #dc3545; }}
+        .stat-card.high {{ border-top: 4px solid #fd7e14; }}
+        .stat-card.medium {{ border-top: 4px solid #ffc107; }}
+        .stat-card.info {{ border-top: 4px solid #17a2b8; }}
+        .stat-number {{ font-size: 2.5em; font-weight: bold; margin: 10px 0; }}
+        
+        .section {{ background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 30px; }}
+        .section-title {{ color: #1a1a2e; border-bottom: 2px solid #eaeaea; padding-bottom: 10px; margin-bottom: 20px; font-size: 1.5em; }}
+        
+        .vulnerability {{ border-left: 4px solid #dc3545; margin: 15px 0; padding: 15px; background: #fff5f5; }}
+        .vulnerability.high {{ border-left-color: #fd7e14; background: #fff9f0; }}
+        .vulnerability.medium {{ border-left-color: #ffc107; background: #fffef0; }}
+        .vulnerability.low {{ border-left-color: #28a745; background: #f0fff4; }}
+        
+        .remediation {{ background: #e8f4fd; border-left: 4px solid #17a2b8; padding: 15px; margin: 15px 0; border-radius: 4px; }}
+        
+        table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
+        th, td {{ padding: 12px 15px; text-align: left; border-bottom: 1px solid #eaeaea; }}
+        th {{ background: #f8f9fa; font-weight: 600; }}
+        
+        .badge {{ display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 600; }}
+        .badge.critical {{ background: #dc3545; color: white; }}
+        .badge.high {{ background: #fd7e14; color: white; }}
+        .badge.medium {{ background: #ffc107; color: #333; }}
+        .badge.low {{ background: #28a745; color: white; }}
+        
+        .footer {{ text-align: center; margin-top: 40px; padding: 20px; color: #666; font-size: 0.9em; border-top: 1px solid #eaeaea; }}
+        
+        @media (max-width: 768px) {{
+            .stats-grid {{ grid-template-columns: 1fr; }}
+            .container {{ padding: 10px; }}
+        }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🛡️ XPRO - APEX SENTINEL Audit Report</h1>
-        <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ XPRO Security Audit Report</h1>
+            <div class="subtitle">Autonomous Cyber-Intelligence Unit | {stats['scan_date']}</div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card critical">
+                <div>Critical Vulnerabilities</div>
+                <div class="stat-number">{stats['critical_vulns']}</div>
+            </div>
+            <div class="stat-card high">
+                <div>High Vulnerabilities</div>
+                <div class="stat-number">{stats['high_vulns']}</div>
+            </div>
+            <div class="stat-card">
+                <div>Total Vulnerabilities</div>
+                <div class="stat-number">{stats['total_vulns']}</div>
+            </div>
+            <div class="stat-card">
+                <div>Services Found</div>
+                <div class="stat-number">{stats['services_found']}</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">Executive Summary</h2>
+            <p>This security audit was conducted using XPRO - APEX SENTINEL v2.0. The scan discovered {stats['total_vulns']} security issues across {stats['hosts_scanned']} hosts.</p>
+            
+            <div class="remediation">
+                <strong>🛡️ Immediate Actions Required:</strong>
+                <ul style="margin-top: 10px; padding-left: 20px;">
+                    <li>Address {stats['critical_vulns']} critical vulnerabilities within 24 hours</li>
+                    <li>Review and patch all services with high-risk vulnerabilities</li>
+                    <li>Implement recommended security controls</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">Vulnerability Details</h2>
+            """
+        
+        # Add vulnerabilities
+        for i, vuln in enumerate(vulnerabilities[:20]):  # Limit for report
+            severity = vuln.get('severity', 'medium').lower()
+            html += f"""
+            <div class="vulnerability {severity}">
+                <h3>#{i+1}: {vuln.get('type', 'Unknown Vulnerability')}</h3>
+                <p><strong>CVSS Score:</strong> <span class="badge {severity}">{vuln.get('cvss', 'N/A')}</span></p>
+                <p><strong>Host:</strong> {vuln.get('host', 'Unknown')}:{vuln.get('port', 'N/A')}</p>
+                <p><strong>Description:</strong> {vuln.get('evidence', 'No description available')}</p>
+                <div class="remediation">
+                    <strong>Remediation:</strong> {vuln.get('remediation', 'Apply security best practices')}
+                </div>
+            </div>
+            """
+        
+        html += """
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">Scanned Services</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Host</th>
+                        <th>Port</th>
+                        <th>Service</th>
+                        <th>Version</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        
+        # Add services
+        for service in services[:50]:  # Limit for report
+            html += f"""
+                <tr>
+                    <td>{service.get('host', 'N/A')}</td>
+                    <td>{service.get('port', 'N/A')}</td>
+                    <td>{service.get('name', 'Unknown')}</td>
+                    <td>{service.get('version', 'N/A')}</td>
+                    <td><span class="badge {'critical' if 'vulnerable' in str(service).lower() else 'low'}">
+                        {'Vulnerable' if 'vulnerable' in str(service).lower() else 'Secure'}
+                    </span></td>
+                </tr>
+            """
+        
+        html += """
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="footer">
+            <p>Generated by XPRO - APEX SENTINEL v2.0</p>
+            <p>GitHub: <a href="https://github.com/Irfan430/XPRO">https://github.com/Irfan430/XPRO</a></p>
+            <p>⚠️ This report is for authorized security testing only. Unauthorized use is prohibited.</p>
+        </div>
     </div>
-    
-    <h2>Executive Summary</h2>
-    <p>Total Vulnerabilities Found: {len(data.get('vulnerabilities', []))}</p>
-    <p>Overall Risk Score: {data.get('risk_score', 0)}</p>
-    
-    <h2>Vulnerability Details</h2>
-    {self._generate_vulnerability_section(data.get('vulnerabilities', []))}
-    
-    <h2>🛡️ Remediation Guidance</h2>
-    {self._generate_remediation_section(data.get('recommendations', []))}
-    
-    <h2>Business Impact Analysis</h2>
-    <p>Each vulnerability includes business impact assessment and priority.</p>
 </body>
 </html>
-"""
+        """
+        
+        # Save report
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        
+        return str(report_path)
     
-    def _generate_vulnerability_section(self, vulnerabilities: List) -> str:
-        """Generate vulnerability HTML"""
-        if not vulnerabilities:
-            return "<p>No vulnerabilities found.</p>"
-        
-        html = ""
-        for vuln in vulnerabilities:
-            severity_class = 'medium'
-            if vuln.get('cvss', 0) >= 9.0:
-                severity_class = 'critical'
-            elif vuln.get('cvss', 0) >= 7.0:
-                severity_class = 'high'
-            
-            html += f"""
-            <div class="vulnerability {severity_class}">
-                <h3>{vuln.get('type', 'Unknown')}</h3>
-                <p><strong>CVSS Score:</strong> {vuln.get('cvss', 'N/A')}</p>
-                <p><strong>Description:</strong> {vuln.get('description', 'No description')}</p>
-                <p><strong>Affected Service:</strong> {vuln.get('service', 'Unknown')}</p>
-            </div>
-            """
-        
-        return html
-    
-    def _generate_remediation_section(self, recommendations: List) -> str:
-        """Generate remediation HTML"""
-        if not recommendations:
-            return "<p>No specific recommendations.</p>"
-        
-        html = ""
-        for rec in recommendations:
-            html += f"""
-            <div class="remediation">
-                <h4>🛠️ {rec.get('action', 'General Remediation')}</h4>
-                <p><strong>Priority:</strong> {rec.get('priority', 'Medium')}</p>
-                <p><strong>Impact:</strong> {rec.get('impact', 'Reduces attack surface')}</p>
-                <p><strong>Implementation:</strong> {rec.get('implementation', 'Apply patch or configuration change')}</p>
-            </div>
-            """
-        
-        return html
+    def _create_default_template(self):
+        """Create default report template"""
+        template = self.template_dir / "default.html"
+        if not template.exists():
+            with open(template, 'w') as f:
+                f.write("<!-- Default XPRO Template -->")
 
 # ============================================================================
-# MAIN ENGINE
+# MAIN CONTROLLER
 # ============================================================================
 
-class ApexSentinelEngine:
-    """Main engine orchestrating all modules"""
+class XPROController:
+    """Main controller for XPRO framework"""
     
     def __init__(self):
-        self.config = Config()
-        self.dashboard = ApexDashboard()
-        self.tactical_advisor = TacticalAdvisor()
-        self.reporter = ShieldReporter(self.config)
+        self.config = XPROConfig()
+        self.dashboard = XPRODashboard(self.config)
+        self.scanner = XPROScanner(self.config, self.dashboard)
+        self.webauditor = WebAuditor(self.config, self.dashboard)
+        self.reporter = XPROReporter(self.config)
         
-        # Initialize modules
-        self.asset_discovery = AssetDiscovery(self.config, self.dashboard)
-        self.web_audit = WebHardeningAudit(self.config, self.dashboard)
-        self.auth_tester = AuthenticationResilienceTester(self.config, self.dashboard)
-        self.infra_auditor = InfrastructureAuditor(self.config, self.dashboard)
-        
-        self.scan_results = {}
+        # Results storage
+        self.results = {
+            'network': {},
+            'web': {},
+            'summary': {}
+        }
     
-    def run_full_audit(self, target: str):
-        """Execute complete security audit"""
+    def run(self):
+        """Main execution flow"""
         try:
-            self.dashboard.clear_screen()
+            # Show banner
             self.dashboard.show_banner()
             
-            console.print("[bold cyan]🚀 INITIATING APEX SENTINEL AUDIT[/bold cyan]\n")
+            # Check tools
+            self._check_environment()
             
-            # Phase 1: Asset Discovery
-            console.print("[bold yellow]PHASE 1: ASSET DISCOVERY[/bold yellow]")
-            self.scan_results['assets'] = self.asset_discovery.scan_network(target)
+            # Get target
+            target = self._get_target()
             
-            # Update dashboard with tactical recommendations
-            advisor_results = self.tactical_advisor.analyze_findings(self.scan_results['assets'])
-            self.dashboard.update_dashboard(
-                "Asset Discovery Complete",
-                f"Found {len(self.scan_results['assets'].get('assets', []))} assets",
-                advisor_results
-            )
+            # Run network scan
+            self.results['network'] = self.scanner.network_discovery(target)
             
-            time.sleep(2)
+            # Check for web services
+            web_targets = self._extract_web_targets(self.results['network'])
+            if web_targets:
+                self.results['web'] = self.webauditor.audit_website(web_targets[0])
             
-            # Phase 2: Web Application Audit (if web services found)
-            if self._has_web_services():
-                console.print("\n[bold yellow]PHASE 2: WEB HARDENING AUDIT[/bold yellow]")
-                web_target = self._get_web_target()
-                self.scan_results['web_audit'] = self.web_audit.audit_website(web_target)
+            # Generate report
+            self._generate_final_report()
             
-            # Phase 3: Authentication Testing
-            console.print("\n[bold yellow]PHASE 3: AUTHENTICATION RESILIENCE[/bold yellow]")
-            auth_target = self._get_auth_target()
-            if auth_target:
-                self.scan_results['auth_audit'] = self.auth_tester.test_credentials(
-                    auth_target, 'ssh', 'admin'
-                )
-            
-            # Phase 4: Infrastructure Audit
-            console.print("\n[bold yellow]PHASE 4: INFRASTRUCTURE AUDIT[/bold yellow]")
-            self.scan_results['infra_audit'] = self.infra_auditor.audit_infrastructure(
-                target,
-                self._get_all_services()
-            )
-            
-            # Generate final report
-            console.print("\n[bold green]📊 GENERATING COMPREHENSIVE REPORT[/bold green]")
-            report_path = self.reporter.generate_report(self.scan_results)
-            
-            console.print(f"\n[bold green]✅ AUDIT COMPLETE[/bold green]")
-            console.print(f"[bold]Report saved to:[/bold] {report_path}")
-            console.print(f"[bold]Total vulnerabilities found:[/bold] {self.dashboard.vulnerabilities_found}")
+            # Show completion
+            self._show_completion()
             
         except KeyboardInterrupt:
-            console.print("\n[red]Audit interrupted by user[/red]")
+            self.console.print("\n[yellow]Scan interrupted by user[/yellow]")
         except Exception as e:
-            console.print(f"\n[red]Critical error: {e}[/red]")
+            self.console.print(f"\n[red]Fatal error: {e}[/red]")
+            import traceback
+            traceback.print_exc()
     
-    def _has_web_services(self) -> bool:
-        """Check if web services were discovered"""
-        assets = self.scan_results.get('assets', {}).get('assets', [])
-        for asset in assets:
-            for service in asset.get('services', []):
-                if 'http' in service.get('service', '').lower():
+    def _check_environment(self):
+        """Check if required tools are installed"""
+        self.dashboard.update_dashboard(
+            "Environment Check",
+            "Verifying tools...",
+            {}
+        )
+        
+        tools = self.config.check_tools()
+        missing = [tool for tool, installed in tools.items() if not installed]
+        
+        if missing:
+            self.dashboard.update_dashboard(
+                "Environment Check",
+                f"Missing {len(missing)} tools",
+                {"critical": [f"Missing: {', '.join(missing[:3])}"]}
+            )
+            
+            if Confirm.ask("[yellow]Some tools are missing. Continue anyway?"):
+                return
+            else:
+                self.console.print("[green]Please install missing tools and try again.")
+                sys.exit(1)
+        
+        self.dashboard.update_dashboard(
+            "Environment Check",
+            "All tools verified",
+            {"recommendations": ["Starting scan..."]}
+        )
+        time.sleep(1)
+    
+    def _get_target(self) -> str:
+        """Get target from user"""
+        while True:
+            target = Prompt.ask("[bold cyan]Enter target (IP/CIDR/URL)[/bold cyan]")
+            
+            if not target:
+                continue
+            
+            # Validate target format
+            if self._validate_target(target):
+                # Legal warning
+                self.console.print("\n[bold red]LEGAL WARNING:[/bold red]")
+                self.console.print("This tool is for authorized security testing only.")
+                self.console.print("You must have explicit permission to scan the target.")
+                
+                if Confirm.ask("[bold red]Do you have authorization to scan this target?"):
+                    return target
+                else:
+                    self.console.print("[yellow]Scan cancelled. Only scan authorized targets.")
+            else:
+                self.console.print("[red]Invalid target format. Use IP, CIDR, or URL.")
+    
+    def _validate_target(self, target: str) -> bool:
+        """Validate target format"""
+        # Simple validation
+        if target.startswith(('http://', 'https://')):
+            return True
+        if '/' in target:  # CIDR
+            try:
+                parts = target.split('/')
+                if len(parts) == 2 and 0 <= int(parts[1]) <= 32:
                     return True
-        return False
+            except:
+                return False
+        # IP address
+        try:
+            socket.inet_aton(target)
+            return True
+        except:
+            return False
     
-    def _get_web_target(self) -> str:
-        """Extract web target from discovered assets"""
-        assets = self.scan_results.get('assets', {}).get('assets', [])
-        for asset in assets:
-            for service in asset.get('services', []):
-                if 'http' in service.get('service', '').lower():
-                    return f"http://{asset.get('host')}:{service.get('port')}"
-        return "http://localhost"
+    def _extract_web_targets(self, network_data: Dict) -> List[str]:
+        """Extract web targets from network scan"""
+        web_targets = []
+        
+        for host in network_data.get('scan_results', []):
+            for service in host.get('services', []):
+                if service.get('name') in ['http', 'https', 'http-alt']:
+                    proto = 'https' if service.get('name') == 'https' else 'http'
+                    web_targets.append(f"{proto}://{host['host']}:{service['port']}")
+        
+        return web_targets[:5]  # Limit to 5 targets
     
-    def _get_auth_target(self) -> str:
-        """Extract authentication service target"""
-        assets = self.scan_results.get('assets', {}).get('assets', [])
-        for asset in assets:
-            for service in asset.get('services', []):
-                if service.get('service') in ['ssh', 'telnet', 'ftp']:
-                    return asset.get('host')
-        return None
+    def _generate_final_report(self):
+        """Generate final comprehensive report"""
+        self.dashboard.update_dashboard(
+            "Report Generation",
+            "Creating final report...",
+            {"recommendations": ["HTML report", "Executive summary"]}
+        )
+        
+        # Combine all results
+        combined = {
+            'scan_summary': {
+                'total_hosts': self.results['network'].get('total_hosts', 0),
+                'scanned_hosts': self.results['network'].get('scanned_hosts', 0),
+                'vulnerabilities_found': self.dashboard.vulnerabilities,
+                'scan_duration': str(datetime.now() - self.dashboard.start_time),
+                'timestamp': datetime.now().isoformat()
+            },
+            'vulnerabilities': [],
+            'services': [],
+            'hosts': []
+        }
+        
+        # Extract vulnerabilities
+        net_vulns = self.results['network'].get('vulnerabilities', [])
+        web_vulns = self.results['web'].get('vulnerabilities', [])
+        combined['vulnerabilities'] = net_vulns + web_vulns
+        
+        # Extract services
+        for host in self.results['network'].get('scan_results', []):
+            for service in host.get('services', []):
+                service['host'] = host['host']
+                combined['services'].append(service)
+        
+        # Generate report
+        report_path = self.reporter.generate_report(combined, "html")
+        
+        # Update dashboard
+        self.dashboard.update_dashboard(
+            "Report Complete",
+            f"Report saved to: {report_path}",
+            {
+                "critical": [f"Found {len(combined['vulnerabilities'])} vulnerabilities"],
+                "recommendations": ["Review report immediately", "Prioritize critical fixes"]
+            }
+        )
     
-    def _get_all_services(self) -> List[Dict]:
-        """Extract all discovered services"""
-        services = []
-        assets = self.scan_results.get('assets', {}).get('assets', [])
-        for asset in assets:
-            services.extend(asset.get('services', []))
-        return services
+    def _show_completion(self):
+        """Show completion summary"""
+        duration = datetime.now() - self.dashboard.start_time
+        
+        summary_table = Table(title="🎯 SCAN COMPLETE", show_header=False, box=None)
+        summary_table.add_column("Metric", style="cyan")
+        summary_table.add_column("Value", style="white")
+        
+        summary_table.add_row("Total Time", str(duration).split('.')[0])
+        summary_table.add_row("Hosts Scanned", str(self.dashboard.hosts))
+        summary_table.add_row("Services Found", str(self.dashboard.services))
+        summary_table.add_row("Vulnerabilities", str(self.dashboard.vulnerabilities))
+        summary_table.add_row("Threads Used", f"{self.config.THREAD_POOL_SIZE}")
+        summary_table.add_row("RAM Usage", f"{psutil.Process().memory_info().rss / 1024**2:.1f} MB")
+        
+        self.dashboard.clear()
+        self.dashboard.show_banner()
+        self.console.print(summary_table)
+        self.console.print("\n[bold green]✅ XPRO audit completed successfully![/bold green]")
+        self.console.print(f"[bold]Reports saved in:[/bold] {self.config.REPORT_DIR}")
+        self.console.print(f"[bold]GitHub:[/bold] https://github.com/Irfan430/XPRO\n")
+
+# ============================================================================
+# QUICK INSTALL SCRIPT
+# ============================================================================
+
+def quick_install():
+    """Quick installation for XPRO"""
+    console = Console()
+    
+    console.print("[bold cyan]XPRO Quick Installer[/bold cyan]")
+    console.print("=" * 50)
+    
+    # Check Python
+    python_version = sys.version_info
+    if python_version.major < 3 or (python_version.major == 3 and python_version.minor < 8):
+        console.print("[red]Python 3.8+ is required[/red]")
+        sys.exit(1)
+    
+    console.print("[green]✓ Python version OK[/green]")
+    
+    # Install dependencies
+    console.print("\n[cyan]Installing dependencies...[/cyan]")
+    
+    requirements = [
+        "rich", "scapy", "python-nmap", "requests",
+        "beautifulsoup4", "pyfiglet", "psutil", "pandas"
+    ]
+    
+    import subprocess
+    import importlib
+    
+    for package in requirements:
+        try:
+            importlib.import_module(package.replace('-', '_'))
+            console.print(f"[green]✓ {package} already installed[/green]")
+        except ImportError:
+            console.print(f"[yellow]Installing {package}...[/yellow]")
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+                console.print(f"[green]✓ {package} installed[/green]")
+            except:
+                console.print(f"[red]✗ Failed to install {package}[/red]")
+    
+    # Create launcher script
+    launcher_path = Path.home() / "xpro.py"
+    if not launcher_path.exists():
+        current_file = Path(__file__).resolve()
+        if current_file != launcher_path:
+            import shutil
+            shutil.copy(current_file, launcher_path)
+            launcher_path.chmod(0o755)
+            console.print(f"[green]✓ Launcher created: {launcher_path}[/green]")
+    
+    console.print("\n[bold green]🎉 XPRO Installation Complete![/bold green]")
+    console.print("\nRun XPRO using:")
+    console.print(f"  [cyan]python3 {launcher_path}[/cyan]")
+    console.print(f"  [cyan]chmod +x {launcher_path} && ./{launcher_path}[/cyan]")
+    console.print("\n[bold]GitHub: https://github.com/Irfan430/XPRO[/bold]")
 
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
 
-def main():
-    """Main entry point for XPRO - APEX SENTINEL"""
-    
-    engine = ApexSentinelEngine()
-    
-    # Display startup
-    engine.dashboard.clear_screen()
-    engine.dashboard.show_banner()
-    
-    console.print("[bold cyan]Autonomous Cyber-Intelligence Unit[/bold cyan]")
-    console.print("[bold red]⚠️  STRICT LEGAL & ETHICAL USE ONLY ⚠️[/bold red]\n")
-    
-    # Get target
-    target = Prompt.ask("[bold]Enter target[/bold] (IP/CIDR/URL)", default="127.0.0.1")
-    
-    # Confirm authorization
-    if not Confirm.ask("[bold red]Do you have explicit authorization to scan this target?"):
-        console.print("[red]Audit aborted. Unauthorized scanning is illegal.[/red]")
-        sys.exit(1)
-    
-    # Start audit
-    engine.run_full_audit(target)
-
 if __name__ == "__main__":
-    main()
+    # Check for install argument
+    if len(sys.argv) > 1 and sys.argv[1] in ['--install', '-i', 'install']:
+        quick_install()
+        sys.exit(0)
+    
+    # Check for help
+    if len(sys.argv) > 1 and sys.argv[1] in ['--help', '-h', 'help']:
+        console.print("[bold cyan]XPRO - APEX SENTINEL v2.0[/bold cyan]")
+        console.print("Usage:")
+        console.print("  python3 xpro.py              # Start interactive scan")
+        console.print("  python3 xpro.py --install    # Quick install")
+        console.print("  python3 xpro.py --help       # Show this help")
+        console.print("\nExamples:")
+        console.print("  python3 xpro.py")
+        console.print("  ./xpro.py --install")
+        console.print("\nGitHub: https://github.com/Irfan430/XPRO")
+        sys.exit(0)
+    
+    # Run main controller
+    try:
+        controller = XPROController()
+        controller.run()
+    except Exception as e:
+        console.print(f"[red]Fatal error: {e}[/red]")
+        console.print("[yellow]Try running with --install to setup dependencies[/yellow]")
+        sys.exit(1)
