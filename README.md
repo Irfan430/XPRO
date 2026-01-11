@@ -1,48 +1,46 @@
 # 🛡️ XPRO
-### *High-Velocity Autonomous Security Auditing & Resilience Framework*
+### *Autonomous Cyber-Intelligence Unit | High-Velocity Security Auditing Framework*
 
-![Python](https://img.shields.io/badge/Python-3.9+-blue?style=for-the-badge&logo=python)
-![Kali Linux](https://img.shields.io/badge/Kali-Linux-lightgrey?style=for-the-badge&logo=kali-linux)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-![Red-Team](https://img.shields.io/badge/Red--Team-Tactical-red?style=for-the-badge)
+<p align="center">
+  <img src="https://img.shields.io/badge/Version-1.0.0-red?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/Platform-Kali%20Linux%20%7C%20CachyOS-blue?style=for-the-badge" alt="Platform">
+  <img src="https://img.shields.io/badge/Python-3.9%2B-yellow?style=for-the-badge" alt="Python">
+</p>
 
-**XPRO** is a production-grade, modular security orchestration framework built for elite security researchers and ethical auditors. Engineered for high-performance systems (16GB RAM), it automates complex auditing workflows on **Kali Linux** and **CachyOS** with precision.
+**XPRO** is a high-velocity, modular security orchestration framework designed for **Red-Team Operations** and **Vulnerability Assessment**. It automates complex auditing workflows into a single, autonomous engine with a cinematic terminal interface.
 
 ---
 
-## 🔥 Key Intelligence Modules
+## 🔱 Intelligence Modules
 
-| Module | Core Capability |
+| Module | Capability |
 | :--- | :--- |
-| **🚀 Asset Discovery** | Multi-threaded Nmap NSE integration & OS fingerprinting. |
-| **🌐 Web Warfare** | Auditing for SQLi, XSS, and Misconfigurations. |
-| **🔑 Auth Resilience** | High-velocity credential strength testing (16GB RAM Optimized). |
-| **🛡️ The Shield Report** | Automated professional HTML audit reports with patching guides. |
-| **🤖 Tactical Advisor** | Logic-driven engine suggesting next-step audit vectors. |
+| **🚀 Asset Discovery** | Aggressive Nmap NSE integration & OS fingerprinting. |
+| **🌐 Web Hardening** | Automated auditing for SQLi, XSS, and Misconfigurations. |
+| **🔑 Auth Resilience** | High-speed multi-threaded credential testing (16GB RAM Optimized). |
+| **🛡️ Tactical Advisor** | Logic-driven engine suggesting remediation & attack vectors. |
+| **📊 The Shield** | Professional HTML/PDF reporting with step-by-step patching guides. |
 
 ---
 
-## 🛠️ Deployment Guide
+## 🛠️ Quick Start
 
-1. **Clone the Repository:**
+### 1. Clone the Architecture
 ```bash
-git clone [https://github.com/your-username/XPRO.git](https://github.com/your-username/XPRO.git)
+git clone [https://github.com/Irfan430/XPRO.git](https://github.com/Irfan430/XPRO.git)
 cd XPRO
 
- * Install Dependencies:
-<!-- end list -->
-pip install -r requirements.txt
-
- * Launch the Engine:
-<!-- end list -->
+2. Launch (Auto-Environment Setup)
+XPRO features a Self-Bootstrapping Engine that automatically handles Virtual Environments and Dependencies.
 sudo python3 xpro.py
 
 📋 Operational Roadmap
- * [x] High-Velocity Multi-threaded Core
  * [x] Cinematic Rich Dashboard UI
- * [x] "The Shield" HTML Remediation Engine
- * [ ] Automated Metasploit-RPC Verification (Upcoming)
+ * [x] Self-Fixing Python Environment (VENV Auto-Fix)
+ * [x] Multi-threaded Recon & Web Audit Engine
+ * [x] "The Shield" Professional Reporting Logic
+ * [ ] Automated Metasploit-RPC Verification
 ⚠️ LEGAL COMPLIANCE
-XPRO is intended for AUTHORIZED EDUCATIONAL AND PROFESSIONAL AUDITING ONLY. Unauthorized access to computer systems is illegal. The developers assume no liability for misuse or damage caused by this framework.
-Developed by Irfan | Autonomous Cyber-Intelligence Unit
+XPRO is strictly intended for AUTHORIZED EDUCATIONAL AND PROFESSIONAL SECURITY AUDITING. Unauthorized usage against systems without explicit permission is illegal. The developer and the Autonomous Cyber-Intelligence Unit assume no liability for misuse.
+Developed by Irfan | Lead Security Architect Autonomous Cyber-Intelligence Unit
 
